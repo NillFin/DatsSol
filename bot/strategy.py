@@ -18,10 +18,7 @@ class Strategy:
         """
         # TODO: продвинутая логика выбора
         if state.upgrades.get("points", 0) > 0:
-            if self.decay_mitigation_count < 3:
-                self.decay_mitigation_count += 1
-                return "decay_mitigation"
-            elif self.signal_range_count < 10:
+            if self.signal_range_count < 10:
                 self.signal_range_count += 1
                 return "signal_range"
 
