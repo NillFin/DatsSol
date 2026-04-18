@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+
 class Strategy:
 
     def __init__(self):
@@ -6,6 +9,7 @@ class Strategy:
         self.vision_range_count = 0
         self.repair_power_count = 0
         self.signal_range_count = 0
+        self.focus_target = None
 
     def choose_upgrade(self, state):
         """
@@ -42,63 +46,152 @@ class Strategy:
             if cell["position"] == [x_main, y_main]:
                 terra_status = cell["terraformationProgress"]
 
+        # Ищем только ПРИЛЕГАЮЩИЕ плантации (без диагоналей)
+        candidates = []
         for p in state.plantations:
             if not p["isMain"]:
                 x, y = p["position"]
+                # прилегание = манхэттенское расстояние 1
+                if abs(x - x_main) + abs(y - y_main) == 1:
+                    for cell in state.cells:
+                        if cell["position"] == [x, y]:
+                            prog = cell["terraformationProgress"]
+                            if prog < terra_status: # есть смысл переезжать
+                                candidates.append((prog, x, y))
 
-                for cell in state.cells:
-                    if cell["position"] == [x, y]:
-                        if cell["terraformationProgress"] < terra_status:
-                            actions.extend([[x_main, y_main], [x, y]])
-                            self.new_main = [x, y]
-                            return actions
+        if candidates:
+            candidates.sort(key=lambda t: t[0]) # самая свежая
+            _, x, y = candidates[0]
+            actions.extend([[x_main, y_main], [x, y]])
+            self.new_main = [x, y]
+            return actions
 
         return None
 
     def decide_actions(self, state):
-        x, y = self.new_main
+        print(f"state: {state}")
+        if self.new_main is None:
+            for p in state.plantations:
+                if p.get("isMain"):
+                    self.new_main = p["position"]
+                    break
 
+        actions = []
         width, height = state.size
 
-        # Карта направлений
-        dir_map = {
-            "up": (0, 1),
-            "down": (0, -1),
-            "left": (-1, 0),
-            "right": (1, 0)
-        }
+        x_main, y_main = self.new_main
 
-        # ✅ Если уже есть стройка — продолжаем
-        if state.construction:
-            tx, ty = state.construction[0]["position"]
+        sr = 3 + self.signal_range_count
+        ar = getattr(state, "actionRange", 2)
 
-            return [{
-                "path": [
-                    [x, y],
-                    [x, y],
-                    [tx, ty]
-                ]
-            }]
+        occupied = set()
+        for p in state.plantations:
+            occupied.add(tuple(p["position"]))
+        if hasattr(state, "enemy") and state.enemy:
+            for e in state.enemy:
+                occupied.add(tuple(e["position"]))
+        if hasattr(state, "mountains") and state.mountains:
+            for m in state.mountains:
+                occupied.add(tuple(m))
+        occupied_except_constructions = deepcopy(occupied)
 
-        # ✅ Если есть сохранённое направление — строим туда
-        if self.pending_direction in dir_map:
-            dx, dy = dir_map[self.pending_direction]
-            tx, ty = x + dx, y + dy
+        constructions = set()
+        if hasattr(state, "construction") and state.construction:
+            for c in state.construction:
+                pos = tuple(c["position"])
+                constructions.add(pos)
+                occupied.add(pos)
 
-            occupied = {tuple(p["position"]) for p in state.plantations}
+        # --- 1. исполнители в пределах SR от ЦУ ---
+        available_executors = []
+        for p in state.plantations:
+            if p.get("isIsolated"):
+                continue
+            px, py = p["position"]
+            # простая оценка SR по манхэттену (в игре SR считается по сети, но для выбора хватит)
+            if abs(px - x_main) + abs(py - y_main) <= sr:  # +4 запас для сети
+                available_executors.append((px, py))
 
-            if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied:
-                print(f"✅ Building {self.pending_direction}: {tx, ty}")
+        if not available_executors:
+            return []
 
-                return [{
-                    "path": [
-                        [x, y],
-                        [x, y],
-                        [tx, ty]
-                    ]
-                }]
+        primary_target = None
 
-            else:
-                self.pending_direction = None
+        # --- 2. выбираем ОДНУ следующую клетку для ЦУ ---
+        if self.focus_target:
+            tx, ty = self.focus_target
+            if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied_except_constructions and abs(x_main - tx) + abs(y_main - ty) <= sr:
+                primary_target = (tx, ty)
+                # цель ещё свободна — оставляем
 
-        return []
+            # 2b. если старой нет или она занята — выбираем новую
+        if not primary_target:
+            # сначала 4 соседа ЦУ (как и раньше)
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                tx, ty = x_main + dx, y_main + dy
+                if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied:
+                    primary_target = (tx, ty)
+                    break
+            # если вокруг всё занято — ищем в радиусе 2-3
+            if not primary_target:
+                for r in range(2, 4):
+                    for dx in range(-r, r + 1):
+                        for dy in range(-r, r + 1):
+                            if abs(dx) + abs(dy) != r: continue
+                            tx, ty = x_main + dx, y_main + dy
+                            if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied:
+                                primary_target = (tx, ty);
+                                break
+                        if primary_target: break
+                    if primary_target: break
+
+            # сохраняем новую цель
+            self.focus_target = list(primary_target) if primary_target else None
+
+        if not primary_target:
+            return []  # строить некуда
+
+        # --- 3. ФОКУС: большая часть строит primary_target ---
+        focus_count = max(1, int(len(available_executors) * 0.75))
+        # сортируем по близости к цели, чтобы не тратить дальних
+        available_executors.sort(key=lambda e: abs(e[0] - primary_target[0]) + abs(e[1] - primary_target[1]))
+
+        used = set()
+        for i in range(min(focus_count, len(available_executors))):
+            ex, ey = available_executors[i]
+            # проверяем actionRange
+            if abs(ex - primary_target[0]) <= ar and abs(ey - primary_target[1]) <= ar:
+                actions.append({
+                    "path": [[ex, ey], [ex, ey], [primary_target[0], primary_target[1]]]
+                })
+                used.add((ex, ey))
+
+        # --- 4. КЛАСТЕР: остальные строят кучно вокруг primary_target ---
+        remaining = [e for e in available_executors if e not in used]  # чтобы не дублировать одну и ту же вторичную цель
+
+        # генерируем кольцо клеток вокруг primary_target
+        cluster_cells = []
+        for r in range(1, 4):
+            for dx in range(-r, r + 1):
+                for dy in range(-r, r + 1):
+                    if max(abs(dx), abs(dy)) != r: continue
+                    tx, ty = primary_target[0] + dx, primary_target[1] + dy
+                    if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied_except_constructions:
+                        cluster_cells.append((tx, ty))
+        # ближе к центру — в приоритете
+        cluster_cells.sort(key=lambda c: abs(c[0] - primary_target[0]) + abs(c[1] - primary_target[1]))
+
+        for ex, ey in remaining:
+            for tx, ty in cluster_cells:
+                if abs(ex - tx) <= ar and abs(ey - ty) <= ar:
+                    actions.append({
+                        "path": [[ex, ey], [ex, ey], [tx, ty]]
+                    })
+                    occupied.add((tx, ty))
+                    break
+
+        actions.reverse()  # как у тебя было
+        print(f"actions: {actions}")
+        print(f"focus target {primary_target}, executors {len(actions)}")
+        return actions
+
