@@ -45,7 +45,8 @@ class Strategy:
         for cell in state.cells:
             if cell["position"] == [x_main, y_main]:
                 terra_status = cell["terraformationProgress"]
-
+        if terra_status < 80:
+            return None
         # Ищем только ПРИЛЕГАЮЩИЕ плантации (без диагоналей)
         candidates = []
         for p in state.plantations:
@@ -93,6 +94,11 @@ class Strategy:
         if hasattr(state, "mountains") and state.mountains:
             for m in state.mountains:
                 occupied.add(tuple(m))
+        if hasattr(state, "cells") and state.cells:
+            for c in state.cells:
+                if c["terraformationProgress"] > 0:
+                    occupied.add(tuple(c["position"]))
+
         occupied_except_constructions = deepcopy(occupied)
 
         constructions = set()
@@ -109,7 +115,7 @@ class Strategy:
                 continue
             px, py = p["position"]
             # простая оценка SR по манхэттену (в игре SR считается по сети, но для выбора хватит)
-            if abs(px - x_main) + abs(py - y_main) <= sr:  # +4 запас для сети
+            if abs(px - x_main) + abs(py - y_main) <= sr+4:  # +4 запас для сети
                 available_executors.append((px, py))
 
         if not available_executors:
@@ -152,7 +158,7 @@ class Strategy:
             return []  # строить некуда
 
         # --- 3. ФОКУС: большая часть строит primary_target ---
-        focus_count = max(1, int(len(available_executors) * 0.75))
+        focus_count = max(1, int(len(available_executors)))
         # сортируем по близости к цели, чтобы не тратить дальних
         available_executors.sort(key=lambda e: abs(e[0] - primary_target[0]) + abs(e[1] - primary_target[1]))
 
