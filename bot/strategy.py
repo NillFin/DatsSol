@@ -1,7 +1,11 @@
 class Strategy:
 
     def __init__(self):
-        pass
+        self.pending_direction = None
+        self.new_main = None
+        self.vision_range_count = 0
+        self.repair_power_count = 0
+        self.signal_range_count = 0
 
     def choose_upgrade(self, state):
         """
@@ -9,45 +13,63 @@ class Strategy:
         """
         # TODO: продвинутая логика выбора
         if state.upgrades.get("points", 0) > 0:
-            return "repair_power"
+            if self.vision_range_count < 5:
+                self.vision_range_count += 1
+                return "vision_range"
+            elif self.repair_power_count < 5:
+                self.repair_power_count += 1
+                return "repair_power"
+            elif self.signal_range_count < 5:
+                self.signal_range_count += 1
+                return "signal_range"
+            else:
+                return "beaver_damage_mitigation"
+
         return None
 
-    def decide_relocation(self, state): 
-        """ 
-        Возвращает путь переноса ЦУ или None 
-        """ 
-        # TODO: логика безопасности 
-        actions = [] 
-        print(state.plantations) 
-        x, y, x_main, y_main = -1, -1, -1, -1 
-        for p in state.plantations: 
-            if p["isMain"]: 
-                x_main, y_main = p["position"] 
-            else: 
-                x, y = p["position"] 
-            if x != -1 and y != -1 and x_main != -1 and y_main != -1: 
-                print(state.turnNo) 
-                actions.append({"relocateMain": [[x_main, y_main], [x, y]]}) 
-                return actions 
-            else: 
-                return None
+    def decide_relocation(self, state):
+        actions = []
+
+        x_main, y_main = -1, -1
+        terra_status = -1
+        for p in state.plantations:
+            if p["isMain"]:
+                x_main, y_main = p["position"]
+                self.new_main = [x_main, y_main]
+                break
+
+        for cell in state.cells:
+            if cell["position"] == [x_main, y_main]:
+                terra_status = cell["terraformationProgress"]
+
+        for p in state.plantations:
+            if not p["isMain"]:
+                x, y = p["position"]
+
+                for cell in state.cells:
+                    if cell["position"] == [x, y]:
+                        if cell["terraformationProgress"] < terra_status:
+                            actions.extend([[x_main, y_main], [x, y]])
+                            self.new_main = [x, y]
+                            return actions
+
+        return None
 
     def decide_actions(self, state):
-
-        print("---- NEW TURN ----")
-        print("Turn:", state.turn)
-        print("Map size:", state.size)
-        print("Plantations:", state.plantations)
-        print("Construction:", state.construction)
-
-        main = next(p for p in state.plantations if p["isMain"])
-        x, y = main["position"]
+        x, y = self.new_main
 
         width, height = state.size
 
-        # ✅ Если уже есть стройка — продолжаем её
+        # Карта направлений
+        dir_map = {
+            "up": (0, 1),
+            "down": (0, -1),
+            "left": (-1, 0),
+            "right": (1, 0)
+        }
+
+        # ✅ Если уже есть стройка — продолжаем
         if state.construction:
-            print("⛔ Already building")
             tx, ty = state.construction[0]["position"]
 
             return [{
@@ -58,19 +80,16 @@ class Strategy:
                 ]
             }]
 
-        # ✅ Иначе начинаем новую
-        candidates = [
-            (x + 1, y),
-            (x - 1, y),
-            (x, y + 1),
-            (x, y - 1),
-        ]
+        # ✅ Если есть сохранённое направление — строим туда
+        if self.pending_direction in dir_map:
+            dx, dy = dir_map[self.pending_direction]
+            tx, ty = x + dx, y + dy
 
-        occupied = {tuple(p["position"]) for p in state.plantations}
+            occupied = {tuple(p["position"]) for p in state.plantations}
 
-        for tx, ty in candidates:
             if 0 <= tx < width and 0 <= ty < height and (tx, ty) not in occupied:
-                print("✅ Building at:", tx, ty)
+                print(f"✅ Building {self.pending_direction}: {tx, ty}")
+
                 return [{
                     "path": [
                         [x, y],
@@ -78,5 +97,8 @@ class Strategy:
                         [tx, ty]
                     ]
                 }]
+
+            else:
+                self.pending_direction = None
 
         return []

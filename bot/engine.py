@@ -3,6 +3,7 @@ import time
 from bot.api import GameAPI
 from bot.game_state import GameState
 from bot.strategy import Strategy
+import keyboard
 
 class GameEngine:
     def __init__(self):
@@ -12,6 +13,40 @@ class GameEngine:
         self.round_info = None
         self.last_command_turn = None
         self.last_round_fetch = 0
+        self.start_input_listener()
+
+    def handle_input(self, user_input):
+        user_input = user_input.lower().strip()
+
+        key_map = {
+            "w": "up",
+            "s": "down",
+            "a": "left",
+            "d": "right"
+        }
+
+        direction = key_map.get(user_input)
+
+        if direction:
+            print("📥 Input:", direction)
+            self.strategy.pending_direction = direction
+
+    def start_input_listener(self):
+        def on_key(event):
+            key_map = {
+                "w": "up",
+                "s": "down",
+                "a": "left",
+                "d": "right"
+            }
+
+            if event.name in key_map:
+                direction = key_map[event.name]
+                print("📥 Input:", direction)
+                if direction:
+                    self.strategy.pending_direction = direction
+
+        keyboard.on_press(on_key)
 
     def register_listener(self, callback):
         self.listeners.append(callback)
@@ -32,9 +67,10 @@ class GameEngine:
                 state = GameState(raw)
 
                 if self.last_command_turn != state.turn:
+                    relocate = self.strategy.decide_relocation(state)
                     actions = self.strategy.decide_actions(state)
                     upgrade = self.strategy.choose_upgrade(state)
-                    relocate = self.strategy.decide_relocation(state)
+
 
                     if actions or upgrade or relocate:
                         response = self.api.send_command(

@@ -46,8 +46,10 @@ function render(state) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     drawBackground();
-
+    drawGrid(minX, minY, maxX, maxY);
+    drawAxes(minX, minY, maxX, maxY);
     drawCells(state, minX, minY, maxX, maxY);
+    drawBoostedStars(minX, minY, maxX, maxY);
     drawMountains(state, minX, minY, maxX, maxY);
     drawPlantations(state, minX, minY, maxX, maxY);
     drawEnemies(state, minX, minY, maxX, maxY);
@@ -69,6 +71,79 @@ function drawBackground() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+function drawGrid(minX, minY, maxX, maxY) {
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+
+    // вертикальные линии
+    for (let i = 0; i <= width; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * tileSize, 0);
+        ctx.lineTo(i * tileSize, height * tileSize);
+        ctx.stroke();
+    }
+
+    // горизонтальные линии
+    for (let j = 0; j <= height; j++) {
+        ctx.beginPath();
+        ctx.moveTo(0, j * tileSize);
+        ctx.lineTo(width * tileSize, j * tileSize);
+        ctx.stroke();
+    }
+}
+
+function drawAxes(minX, minY, maxX, maxY) {
+    ctx.font = "10px monospace";
+
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+
+    // ✅ Подписи X
+    for (let i = 0; i < width; i++) {
+        const worldX = minX + i;
+
+        const screenX = i * tileSize + tileSize / 2;
+
+        if (worldX % 7 === 0) {
+            ctx.fillStyle = "#ffd700"; // золотой
+            ctx.font = "bold 11px monospace";
+        } else {
+            ctx.fillStyle = "rgba(255,255,255,0.6)";
+            ctx.font = "10px monospace";
+        }
+
+        ctx.fillText(
+            worldX,
+            screenX - 8,
+            12
+        );
+    }
+
+    // ✅ Подписи Y
+    for (let j = 0; j < height; j++) {
+        const worldY = maxY - j;
+
+        const screenY = j * tileSize + tileSize / 2 + 3;
+
+        if (worldY % 7 === 0) {
+            ctx.fillStyle = "#ffd700";
+            ctx.font = "bold 11px monospace";
+        } else {
+            ctx.fillStyle = "rgba(255,255,255,0.6)";
+            ctx.font = "10px monospace";
+        }
+
+        ctx.fillText(
+            worldY,
+            2,
+            screenY
+        );
+    }
+}
+
 function drawCells(state, minX, minY, maxX, maxY) {
     if (!state.cells) return;
 
@@ -86,6 +161,51 @@ function drawCells(state, minX, minY, maxX, maxY) {
 
         ctx.fillRect(sx, sy, tileSize, tileSize);
     }
+}
+
+function drawBoostedStars(minX, minY, maxX, maxY) {
+    ctx.fillStyle = "#ffd700";
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth = 1;
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+
+            if (x % 7 === 0 && y % 7 === 0) {
+
+                const [sx, sy] = worldToScreen(x, y, minX, minY, maxY);
+
+                drawStar(
+                    sx + tileSize / 2,
+                    sy + tileSize / 2,
+                    tileSize / 4,
+                    tileSize / 8,
+                    5
+                );
+            }
+        }
+    }
+}
+
+function drawStar(cx, cy, outerRadius, innerRadius, points) {
+    ctx.beginPath();
+
+    for (let i = 0; i < points * 2; i++) {
+        const angle = (Math.PI / points) * i;
+        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+
+        const x = cx + Math.cos(angle - Math.PI / 2) * radius;
+        const y = cy + Math.sin(angle - Math.PI / 2) * radius;
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+
+    ctx.closePath();
+    ctx.fill();
 }
 
 function drawMountains(state, minX, minY, maxX, maxY) {
