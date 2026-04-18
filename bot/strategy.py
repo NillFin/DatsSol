@@ -155,46 +155,6 @@ class Strategy:
 
         if not available_executors:
             return []
-        beaver_actions = []
-        if state.beavers:
-            used_executors = set()
-
-            # сортируем бобров по близости к ЦУ — сначала самых опасных
-            beavers_sorted = sorted(
-                state.beavers,
-                key=lambda b: max(abs(b["position"][0] - x_main), abs(b["position"][1] - y_main))
-            )
-
-            for beaver in beavers_sorted:
-                bx, by = beaver["position"]
-
-                # бобер должен быть теоретически достижим (SR + AR запас)
-                if max(abs(bx - x_main), abs(by - y_main)) > sr + ar:
-                    continue
-
-                # ищем исполнителя, который может атаковать
-                best = None
-                for ex, ey in available_executors:
-                    if (ex, ey) in used_executors:
-                        continue
-                    # проверка AR от исполнителя до бобра (по правилам: |dx|<=AR и |dy|<=AR)
-                    if max(abs(ex - bx), abs(ey - by)) <= ar:
-                        # и исполнитель в пределах SR от ЦУ
-                        if max(abs(ex - x_main), abs(ey - y_main)) <= sr:
-                            best = (ex, ey)
-                            break  # берем первого ближайшего
-
-                if best:
-                    ex, ey = best
-                    beaver_actions.append({
-                        "path": [[ex, ey], [ex, ey], [bx, by]]
-                    })
-                    used_executors.add(best)
-                    available_executors.remove(best)
-                    # один исполнитель — один удар, чтобы не терять эффективность
-                    # (каждая следующая команда через ту же плантацию -1 к BE)
-
-        actions.extend(beaver_actions)
         primary_target = None
 
         # --- 2. выбираем ОДНУ следующую клетку для ЦУ ---

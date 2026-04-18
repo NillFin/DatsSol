@@ -46,6 +46,7 @@ class GameEngine:
                 if direction:
                     self.strategy.pending_direction = direction
 
+
         keyboard.on_press(on_key)
 
     def register_listener(self, callback):
