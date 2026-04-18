@@ -10,6 +10,7 @@ class Strategy:
         self.repair_power_count = 0
         self.signal_range_count = 0
         self.focus_target = None
+        self.decay_mitigation_count = 0
 
     def choose_upgrade(self, state):
         """
@@ -17,15 +18,19 @@ class Strategy:
         """
         # TODO: продвинутая логика выбора
         if state.upgrades.get("points", 0) > 0:
-            if self.vision_range_count < 5:
+            if self.decay_mitigation_count < 3:
+                self.decay_mitigation_count += 1
+                return "decay_mitigation"
+            elif self.signal_range_count < 10:
+                self.signal_range_count += 1
+                return "signal_range"
+
+            elif self.vision_range_count < 5:
                 self.vision_range_count += 1
                 return "vision_range"
             elif self.repair_power_count < 5:
                 self.repair_power_count += 1
                 return "repair_power"
-            elif self.signal_range_count < 5:
-                self.signal_range_count += 1
-                return "signal_range"
             else:
                 return "beaver_damage_mitigation"
 
