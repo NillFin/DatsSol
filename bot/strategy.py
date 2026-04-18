@@ -47,7 +47,7 @@ class Strategy:
         for cell in state.cells:
             if cell["position"] == [x_main, y_main]:
                 terra_status = cell["terraformationProgress"]
-        if terra_status < 80:
+        if terra_status < 40:
             return None
         # Ищем только ПРИЛЕГАЮЩИЕ плантации (без диагоналей)
         candidates = []
@@ -93,6 +93,39 @@ class Strategy:
         if hasattr(state, "enemy") and state.enemy:
             for e in state.enemy:
                 occupied.add(tuple(e["position"]))
+        if hasattr(state, "beavers") and state.beavers:
+            for b in state.beavers:
+                x = b["position"][0]
+                y = b["position"][1]
+                occupied.add((x, y))
+                occupied.add((x-2, y-2))
+                occupied.add((x - 2, y - 1))
+                occupied.add((x - 2, y - 0))
+                occupied.add((x - 2, y + 1))
+                occupied.add((x - 2, y + 2))
+                occupied.add((x - 1, y - 2))
+                occupied.add((x - 1, y - 1))
+                occupied.add((x - 1, y - 0))
+                occupied.add((x - 1, y + 1))
+                occupied.add((x - 1, y + 2))
+
+                occupied.add((x, y - 2))
+                occupied.add((x, y - 1))
+                occupied.add((x, y - 0))
+                occupied.add((x, y + 1))
+                occupied.add((x, y + 2))
+
+                occupied.add((x + 1, y - 2))
+                occupied.add((x + 1, y - 1))
+                occupied.add((x + 1, y - 0))
+                occupied.add((x + 1, y + 1))
+                occupied.add((x + 1, y + 2))
+
+                occupied.add((x + 2, y - 2))
+                occupied.add((x + 2, y - 1))
+                occupied.add((x + 2, y - 0))
+                occupied.add((x + 2, y + 1))
+                occupied.add((x + 2, y + 2))
         if hasattr(state, "mountains") and state.mountains:
             for m in state.mountains:
                 occupied.add(tuple(m))
@@ -117,12 +150,51 @@ class Strategy:
                 continue
             px, py = p["position"]
             # простая оценка SR по манхэттену (в игре SR считается по сети, но для выбора хватит)
-            if abs(px - x_main) + abs(py - y_main) <= sr+4:  # +4 запас для сети
+            if abs(px - x_main) + abs(py - y_main) <= sr:  # +4 запас для сети
                 available_executors.append((px, py))
 
         if not available_executors:
             return []
+        beaver_actions = []
+        if state.beavers:
+            used_executors = set()
 
+            # сортируем бобров по близости к ЦУ — сначала самых опасных
+            beavers_sorted = sorted(
+                state.beavers,
+                key=lambda b: max(abs(b["position"][0] - x_main), abs(b["position"][1] - y_main))
+            )
+
+            for beaver in beavers_sorted:
+                bx, by = beaver["position"]
+
+                # бобер должен быть теоретически достижим (SR + AR запас)
+                if max(abs(bx - x_main), abs(by - y_main)) > sr + ar:
+                    continue
+
+                # ищем исполнителя, который может атаковать
+                best = None
+                for ex, ey in available_executors:
+                    if (ex, ey) in used_executors:
+                        continue
+                    # проверка AR от исполнителя до бобра (по правилам: |dx|<=AR и |dy|<=AR)
+                    if max(abs(ex - bx), abs(ey - by)) <= ar:
+                        # и исполнитель в пределах SR от ЦУ
+                        if max(abs(ex - x_main), abs(ey - y_main)) <= sr:
+                            best = (ex, ey)
+                            break  # берем первого ближайшего
+
+                if best:
+                    ex, ey = best
+                    beaver_actions.append({
+                        "path": [[ex, ey], [ex, ey], [bx, by]]
+                    })
+                    used_executors.add(best)
+                    available_executors.remove(best)
+                    # один исполнитель — один удар, чтобы не терять эффективность
+                    # (каждая следующая команда через ту же плантацию -1 к BE)
+
+        actions.extend(beaver_actions)
         primary_target = None
 
         # --- 2. выбираем ОДНУ следующую клетку для ЦУ ---
