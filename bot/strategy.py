@@ -163,7 +163,7 @@ class Strategy:
             return []  # строить некуда
 
         # --- 3. ФОКУС: большая часть строит primary_target ---
-        focus_count = max(1, int(len(available_executors) * 0.75))
+        focus_count = max(1, int(len(available_executors)))
         # сортируем по близости к цели, чтобы не тратить дальних
         available_executors.sort(key=lambda e: abs(e[0] - primary_target[0]) + abs(e[1] - primary_target[1]))
 
